@@ -1,62 +1,36 @@
-# This config was automatically generated from your source code
-# Stacks detected: deps:node:.,test:jest:
 version: 2.1
+
 orbs:
-  node: circleci/node@5
+  nx: nrwl/nx@1.6.2
+
 jobs:
-  test-node:
-    # Install node dependencies and run tests
-    executor: node/default
-    environment:
-      JEST_JUNIT_OUTPUT_DIR: ./test-results/
-    steps:
-      - checkout
-      - node/install-packages:
-          cache-path: ~/project/node_modules
-          override-ci-command: npm install
-      - run:
-          command: npm install jest-junit
-      - run:
-          name: Run tests
-          command: npm run test --ci --runInBand --reporters=default --reporters=jest-junit
-      - store_test_results:
-          path: ./test-results/
-  build-node:
-    # Build node project
-    executor: node/default
-    steps:
-      - checkout
-      - node/install-packages:
-          cache-path: ~/project/node_modules
-          override-ci-command: npm install
-      - run:
-          command: npm run build
-      - run:
-          name: Create the ~/artifacts directory if it doesn't exist
-          command: mkdir -p ~/artifacts
-      # Copy output to artifacts dir
-      - run:
-          name: Copy artifacts
-          command: cp -R build dist public .output .next .docusaurus ~/artifacts 2>/dev/null || true
-      - store_artifacts:
-          path: ~/artifacts
-          destination: node-build
-  deploy:
-    # This is an example deploy job, not actually used by the workflow
+  main:
     docker:
-      - image: cimg/base:stable
+      - image: cimg/node:lts-browsers
     steps:
-      # Replace this with steps to deploy to users
+      - checkout
+
       - run:
-          name: deploy
-          command: '#e.g. ./deploy.sh'
+          name: Install PNPM
+          command: npm install --prefix=$HOME/.local -g pnpm@8
+
+      # This enables task distribution via Nx Cloud
+      # Run this command as early as possible, before dependencies are installed
+      # Learn more at https://nx.dev/ci/reference/nx-cloud-cli#npx-nxcloud-startcirun
+      # Connect your workspace by running "nx connect" and uncomment this line to enable task distribution
+      # - run: pnpm dlx nx-cloud start-ci-run --distribute-on="3 linux-medium-js" --stop-agents-after="e2e-ci"
+
+      - run: pnpm install --frozen-lockfile
+      - nx/set-shas:
+          main-branch-name: 'main'
+
+      # Prepend any command with "nx-cloud record --" to record its logs to Nx Cloud
+      # - run: pnpm exec nx-cloud record -- echo Hello World
+      - run: pnpm exec nx affected --base=$NX_BASE --head=$NX_HEAD -t lint test build e2e-ci
+
 workflows:
-  build-and-test:
+  version: 2
+
+  ci:
     jobs:
-      - test-node
-      - build-node:
-          requires:
-            - test-node
-    # - deploy:
-    #     requires:
-    #       - build-node
+      - main
